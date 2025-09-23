@@ -37,14 +37,16 @@ export const ProductCard = memo(function ProductCard({ product, onImageClick, on
     if (!isSelectionValid()) return
 
     if (isWholesale) {
-      onAddToCart(product, {
-        productId: product.id,
-        presentation: "quarter", // Default for wholesale
-        grind: selectedGrind,
-        quantity: 1,
-        quarterQuantity: wholesaleQuantities.quarter,
-        fullQuantity: wholesaleQuantities.full,
-      })
+      if (wholesaleQuantities.quarter > 0 || wholesaleQuantities.full > 0) {
+        onAddToCart(product, {
+          productId: product.id,
+          presentation: "quarter", // Default for wholesale
+          grind: selectedGrind,
+          quantity: 1,
+          quarterQuantity: wholesaleQuantities.quarter,
+          fullQuantity: wholesaleQuantities.full,
+        })
+      }
     } else {
       onAddToCart(product, {
         productId: product.id,

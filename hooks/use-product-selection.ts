@@ -11,19 +11,22 @@ export function useProductSelection() {
   const [selectedGrind, setSelectedGrind] = useState("nespresso")
   const [selectedPresentation, setSelectedPresentation] = useState("quarter")
   const [wholesaleQuantities, setWholesaleQuantities] = useState<WholesaleQuantities>({
-    quarter: 1,
-    full: 1,
+    quarter: 0,
+    full: 0,
   })
 
   // Reset selections when user type changes
   useEffect(() => {
     if (user) {
       setSelectedGrind(user.userType === "wholesale" ? "whole" : "nespresso")
+      if (user.userType === "wholesale") {
+        setWholesaleQuantities({ quarter: 0, full: 0 })
+      }
     } else {
       // Reset to default values when user logs out
       setSelectedGrind("nespresso")
       setSelectedPresentation("quarter")
-      setWholesaleQuantities({ quarter: 1, full: 1 })
+      setWholesaleQuantities({ quarter: 0, full: 0 })
     }
   }, [user])
 

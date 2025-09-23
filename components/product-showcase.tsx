@@ -21,6 +21,11 @@ export function ProductShowcase() {
 
   const cartTotal = useMemo(() => {
     return cartItems.reduce((sum, item) => {
+      if (item?.options?.quarterQuantity !== undefined || item?.options?.fullQuantity !== undefined) {
+        const quarterQty = item?.options?.quarterQuantity || 0
+        const fullQty = item?.options?.fullQuantity || 0
+        return sum + quarterQty + fullQty
+      }
       const quantity = item?.options?.quantity || 0
       return sum + quantity
     }, 0)
@@ -39,32 +44,110 @@ export function ProductShowcase() {
     setShowDetailModal(true)
   }, [])
 
-  const handleAddToCart = useCallback((product: Product, options: ProductSelection) => {
-    const safeOptions = {
-      grind: options?.grind || "molido",
-      presentation: options?.presentation || "250g",
-      quantity: options?.quantity || 1,
-      isWholesale: options?.isWholesale || false,
-      wholesaleQuantity: options?.wholesaleQuantity || 1,
+  const handleAddToCart = useCallback(
+    (product: Product, options: ProductSelection) => {
+      const safeOptions = {
+        productId: options?.productId || product.id,
+        grind: options?.grind || "whole",
+        presentation: options?.presentation || "quarter",
+        quantity: options?.quantity || 1,
+        quarterQuantity: options?.quarterQuantity,
+        fullQuantity: options?.fullQuantity,
+      }
+
+      // Buscar si ya existe un item con el mismo producto y molienda
+      const existingItemIndex = cartItems.findIndex(
+        (item) => item.id === product.id && item.options.grind === safeOptions.grind,
+      )
+
+      if (existingItemIndex !== -1) {
+        // Si existe, actualizar las cantidades
+        setCartItems((prev) => {
+          const updated = [...prev]
+          const existingItem = updated[existingItemIndex]
+
+          if (safeOptions.quarterQuantity !== undefined || safeOptions.fullQuantity !== undefined) {
+            // Para mayoristas, sumar las cantidades
+            updated[existingItemIndex] = {
+              ...existingItem,
+              options: {
+                ...existingItem.options,
+                quarterQuantity: (existingItem.options.quarterQuantity || 0) + (safeOptions.quarterQuantity || 0),
+                fullQuantity: (existingItem.options.fullQuantity || 0) + (safeOptions.fullQuantity || 0),
+              },
+            }
+          } else {
+            // Para usuarios regulares, sumar la cantidad
+            updated[existingItemIndex] = {
+              ...existingItem,
+              options: {
+                ...existingItem.options,
+                quantity: (existingItem.options.quantity || 0) + (safeOptions.quantity || 0),
+              },
+            }
+          }
+
+          return updated
+        })
+      } else {
+        // Si no existe, crear nuevo item
+        const newItem: CartItem = {
+          ...product,
+          options: safeOptions,
+          cartId: Date.now() + Math.random(),
+        }
+        setCartItems((prev) => [...prev, newItem])
+      }
+
+      const isMayorista = options?.quarterQuantity !== undefined || options?.fullQuantity !== undefined
+      const message = isMayorista
+        ? `${product.name} agregado al pedido mayorista.`
+        : `${product.name} se agregó exitosamente al carrito.`
+
+      toast({
+        title: "¡Producto agregado!",
+        description: message,
+        duration: 3000,
+      })
+    },
+    [cartItems],
+  )
+
+  const handleRemoveFromCart = useCallback((cartId: string | number) => {
+    if (typeof cartId === "string" && cartId.includes("-")) {
+      // Manejar IDs de presentación como "123-quarter" o "123-full"
+      const [baseCartId, presentationType] = cartId.split("-")
+      const numericCartId = Number.parseFloat(baseCartId)
+
+      setCartItems(
+        (prev) =>
+          prev
+            .map((item) => {
+              if (Math.floor(item.cartId) === Math.floor(numericCartId)) {
+                const updatedOptions = { ...item.options }
+
+                if (presentationType === "quarter") {
+                  updatedOptions.quarterQuantity = 0
+                } else if (presentationType === "full") {
+                  updatedOptions.fullQuantity = 0
+                }
+
+                // Si ambas cantidades son 0, remover el item completamente
+                if ((updatedOptions.quarterQuantity || 0) === 0 && (updatedOptions.fullQuantity || 0) === 0) {
+                  return null
+                }
+
+                return { ...item, options: updatedOptions }
+              }
+              return item
+            })
+            .filter(Boolean) as CartItem[],
+      )
+    } else {
+      // Manejar IDs normales (usuarios regulares)
+      const numericCartId = typeof cartId === "string" ? Number.parseFloat(cartId) : cartId
+      setCartItems((prev) => prev.filter((item) => item.cartId !== numericCartId))
     }
-
-    const newItem: CartItem = {
-      ...product,
-      options: safeOptions,
-      cartId: Date.now() + Math.random(), // Ensure unique ID
-    }
-
-    setCartItems((prev) => [...prev, newItem])
-
-    toast({
-      title: "¡Producto agregado!",
-      description: `${product.name} se agregó exitosamente al carrito.`,
-      duration: 3000,
-    })
-  }, [])
-
-  const handleRemoveFromCart = useCallback((cartId: number) => {
-    setCartItems((prev) => prev.filter((item) => item.cartId !== cartId))
 
     toast({
       title: "Producto removido",

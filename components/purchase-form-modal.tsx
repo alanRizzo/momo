@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
-import { Package, Coffee, User, Trash2, Hash } from "lucide-react"
+import { Package, User, Trash2 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 import { AuthModal } from "@/components/auth-modal"
@@ -29,7 +29,7 @@ interface PurchaseFormModalProps {
   cartItems: CartItem[]
   isOpen: boolean
   onClose: () => void
-  onRemoveItem: (cartId: number) => void // Added remove item function
+  onRemoveItem: (cartId: string) => void // Updated to accept string cartId
 }
 
 const grindLabels = {
@@ -67,9 +67,69 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
   const calculateItemTotal = (item: CartItem) => {
     const basePrice =
       typeof item.price === "string" ? Number.parseFloat(item.price.replace("$", "")) : Number(item.price)
+
+    // Si es mayorista y tiene cantidades específicas
+    if (item.options.quarterQuantity !== undefined || item.options.fullQuantity !== undefined) {
+      const quarterTotal = basePrice * 1 * (item.options.quarterQuantity || 0)
+      const fullTotal = basePrice * 3.5 * (item.options.fullQuantity || 0)
+      return quarterTotal + fullTotal
+    }
+
+    // Para usuarios regulares
     const multiplier = presentationMultipliers[item.options.presentation as keyof typeof presentationMultipliers] || 1
     const quantity = item.options.quantity || 1
     return basePrice * multiplier * quantity
+  }
+
+  const groupCartItems = () => {
+    const grouped = cartItems.reduce(
+      (acc, item) => {
+        const key = `${item.id}-${item.options.grind}`
+
+        if (!acc[key]) {
+          acc[key] = {
+            product: item,
+            presentations: [],
+          }
+        }
+
+        if (item.options.quarterQuantity !== undefined || item.options.fullQuantity !== undefined) {
+          // Para mayoristas, crear presentaciones separadas para cada cantidad > 0
+          if (item.options.quarterQuantity && item.options.quarterQuantity > 0) {
+            acc[key].presentations.push({
+              type: "quarter",
+              quantity: item.options.quarterQuantity,
+              label: "1/4 kg",
+              cartId: `${item.cartId}-quarter`, // ID único para cada presentación
+            })
+          }
+          if (item.options.fullQuantity && item.options.fullQuantity > 0) {
+            acc[key].presentations.push({
+              type: "full",
+              quantity: item.options.fullQuantity,
+              label: "1 kg",
+              cartId: `${item.cartId}-full`, // ID único para cada presentación
+            })
+          }
+        } else {
+          // Para usuarios regulares
+          acc[key].presentations.push({
+            type: item.options.presentation,
+            quantity: item.options.quantity || 1,
+            label: presentationLabels[item.options.presentation as keyof typeof presentationLabels],
+            cartId: item.cartId.toString(),
+          })
+        }
+
+        return acc
+      },
+      {} as Record<
+        string,
+        { product: CartItem; presentations: Array<{ type: string; quantity: number; label: string; cartId: string }> }
+      >,
+    )
+
+    return Object.values(grouped)
   }
 
   const calculateGrandTotal = () => {
@@ -124,64 +184,50 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
           </DialogHeader>
 
           <div className="space-y-6">
-            {cartItems.map((item, index) => (
-              <div key={`${item.id}-${index}`} className="space-y-3">
+            {groupCartItems().map((group, groupIndex) => (
+              <div key={`group-${groupIndex}`} className="space-y-3">
                 <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
                   <img
-                    src={item.image || "/placeholder.svg"}
-                    alt={item.name}
+                    src={group.product.image || "/placeholder.svg"}
+                    alt={group.product.name}
                     className="w-20 h-20 object-cover rounded"
                   />
                   <div className="flex-1">
-                    <h4 className="font-semibold text-lg">{item.name}</h4>
-                    <p className="text-sm text-muted-foreground">{item.price} base</p>
+                    <h4 className="font-semibold text-lg">{group.product.name}</h4>
+                    <p className="text-sm text-muted-foreground">{group.product.price} base</p>
+                    <p className="text-sm text-muted-foreground">
+                      {grindLabels[group.product.options.grind as keyof typeof grindLabels]}
+                    </p>
                   </div>
-                  <div className="text-right flex items-center gap-2">
-                    <div>
-                      <p className="font-semibold text-accent">${calculateItemTotal(item).toFixed(2)}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onRemoveItem(item.cartId)}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  <div className="text-right">
+                    <p className="font-semibold text-accent">${calculateItemTotal(group.product).toFixed(2)}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 px-4">
+                  {group.presentations.map((presentation, presIndex) => (
+                    <div
+                      key={`pres-${presIndex}`}
+                      className="flex items-center justify-between p-3 bg-background border rounded"
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                      <div className="flex items-center gap-3">
+                        <Package className="h-4 w-4 text-accent" />
+                        <span className="font-medium">{presentation.label}</span>
+                        <span className="text-sm text-muted-foreground">x{presentation.quantity}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onRemoveItem(presentation.cartId)}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 text-sm px-4">
-                  <div className="flex items-center gap-2">
-                    <Coffee className="h-4 w-4 text-accent" />
-                    <div>
-                      <p className="font-medium">Molienda</p>
-                      <p className="text-muted-foreground">
-                        {grindLabels[item.options.grind as keyof typeof grindLabels]}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-accent" />
-                    <div>
-                      <p className="font-medium">Presentación</p>
-                      <p className="text-muted-foreground">
-                        {presentationLabels[item.options.presentation as keyof typeof presentationLabels]}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Hash className="h-4 w-4 text-accent" />
-                    <div>
-                      <p className="font-medium">Cantidad</p>
-                      <p className="text-muted-foreground">{item.options.quantity || 1}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {index < cartItems.length - 1 && <Separator />}
+                {groupIndex < groupCartItems().length - 1 && <Separator />}
               </div>
             ))}
 
