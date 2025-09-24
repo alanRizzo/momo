@@ -23,4 +23,5 @@ export interface AuthContextType {
   logout: () => void
   isLoading: boolean
   createWholesaleUser: (email: string, firstName: string, lastName: string, phone: string, address: string) => void
+  updateUserData?: (updates: Partial<Pick<User, "phone" | "address" | "firstName" | "lastName">>) => Promise<User>
 }

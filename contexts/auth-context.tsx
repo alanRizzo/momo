@@ -2,67 +2,9 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import type { User, AuthContextType } from "@/types/auth"
+import { AuthService } from "@/services/auth-service"
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
-
-class AuthService {
-  private static readonly STORAGE_KEY = "user"
-  private static readonly TEST_WHOLESALE_USER = {
-    email: "mayorista@test.com",
-    password: "test123",
-    userData: {
-      id: "wholesale-1",
-      email: "mayorista@test.com",
-      name: "Juan Pérez",
-      firstName: "Juan",
-      lastName: "Pérez",
-      phone: "+1234567890",
-      address: "Calle Principal 123, Ciudad",
-      userType: "wholesale" as const,
-    },
-  }
-
-  static getStoredUser(): User | null {
-    if (typeof window === "undefined") return null
-    const savedUser = localStorage.getItem(this.STORAGE_KEY)
-    return savedUser ? JSON.parse(savedUser) : null
-  }
-
-  static storeUser(user: User): void {
-    if (typeof window !== "undefined") {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(user))
-    }
-  }
-
-  static removeUser(): void {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(this.STORAGE_KEY)
-    }
-  }
-
-  static async simulateApiCall(delay = 1000): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, delay))
-  }
-
-  static isWholesaleEmail(email: string): boolean {
-    return email.includes("mayorista") || email.includes("wholesale")
-  }
-
-  static createMockUser(email: string, firstName?: string, lastName?: string, phone?: string, address?: string): User {
-    const isWholesale = this.isWholesaleEmail(email)
-
-    return {
-      id: isWholesale ? `wholesale-${Date.now()}` : "1",
-      email,
-      name: firstName && lastName ? `${firstName} ${lastName}` : email.split("@")[0],
-      firstName: firstName || email.split("@")[0],
-      lastName: lastName || "Usuario",
-      phone: phone || "",
-      address: address || "",
-      userType: isWholesale ? "wholesale" : "regular",
-    }
-  }
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -79,20 +21,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true)
     try {
-      await AuthService.simulateApiCall()
+      // Try FastAPI first
+      try {
+        const user = await AuthService.login(email, password)
+        setUser(user)
+        return true
+      } catch (apiError) {
+        console.warn("FastAPI login failed, falling back to mock:", apiError)
 
-      let mockUser: User
+        // Fallback to mock for development
+        await AuthService.simulateApiCall()
 
-      // Check test wholesale user
-      if (email === AuthService.TEST_WHOLESALE_USER.email && password === AuthService.TEST_WHOLESALE_USER.password) {
-        mockUser = AuthService.TEST_WHOLESALE_USER.userData
-      } else {
-        mockUser = AuthService.createMockUser(email)
+        let mockUser: User
+
+        // Check test wholesale user
+        if (email === "mayorista@test.com" && password === "test123") {
+          mockUser = {
+            id: "wholesale-1",
+            email: "mayorista@test.com",
+            name: "Juan Pérez",
+            firstName: "Juan",
+            lastName: "Pérez",
+            phone: "+1234567890",
+            address: "Calle Principal 123, Ciudad",
+            userType: "wholesale",
+          }
+        } else {
+          mockUser = AuthService.createMockUser(email)
+        }
+
+        setUser(mockUser)
+        AuthService.storeUser(mockUser)
+        return true
       }
-
-      setUser(mockUser)
-      AuthService.storeUser(mockUser)
-      return true
     } catch (error) {
       console.error("Login error:", error)
       return false
@@ -111,12 +72,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ): Promise<boolean> => {
     setIsLoading(true)
     try {
-      await AuthService.simulateApiCall()
+      // Try FastAPI first
+      try {
+        const user = await AuthService.register(email, password, firstName, lastName, phone, address)
+        setUser(user)
+        return true
+      } catch (apiError) {
+        console.warn("FastAPI register failed, falling back to mock:", apiError)
 
-      const mockUser = AuthService.createMockUser(email, firstName, lastName, phone, address)
-      setUser(mockUser)
-      AuthService.storeUser(mockUser)
-      return true
+        // Fallback to mock for development
+        await AuthService.simulateApiCall()
+
+        const mockUser = AuthService.createMockUser(email, firstName, lastName, phone, address)
+        setUser(mockUser)
+        AuthService.storeUser(mockUser)
+        return true
+      }
     } catch (error) {
       console.error("Registration error:", error)
       return false
@@ -125,23 +96,95 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const createWholesaleUser = (email: string, firstName: string, lastName: string, phone: string, address: string) => {
-    const wholesaleUser = AuthService.createMockUser(email, firstName, lastName, phone, address)
-    wholesaleUser.userType = "wholesale"
-    wholesaleUser.id = `wholesale-${Date.now()}`
+  const createWholesaleUser = async (
+    email: string,
+    firstName: string,
+    lastName: string,
+    phone: string,
+    address: string,
+  ) => {
+    try {
+      // Try FastAPI first for wholesale user creation
+      try {
+        const user = await AuthService.register(
+          email,
+          "defaultPassword123",
+          firstName,
+          lastName,
+          phone,
+          address,
+          "wholesale",
+        )
+        console.log("Created wholesale user via API:", user)
+        setUser(user)
+        return user
+      } catch (apiError) {
+        console.warn("FastAPI wholesale user creation failed, falling back to mock:", apiError)
 
-    console.log("Created wholesale user:", wholesaleUser)
-    setUser(wholesaleUser)
-    AuthService.storeUser(wholesaleUser)
+        // Fallback to mock
+        const wholesaleUser = AuthService.createMockUser(email, firstName, lastName, phone, address)
+        wholesaleUser.userType = "wholesale"
+        wholesaleUser.id = `wholesale-${Date.now()}`
+
+        console.log("Created wholesale user (mock):", wholesaleUser)
+        setUser(wholesaleUser)
+        AuthService.storeUser(wholesaleUser)
+        return wholesaleUser
+      }
+    } catch (error) {
+      console.error("Error creating wholesale user:", error)
+      throw error
+    }
   }
 
-  const logout = () => {
-    setUser(null)
-    AuthService.removeUser()
+  const logout = async () => {
+    try {
+      await AuthService.logout()
+    } catch (error) {
+      console.error("Logout error:", error)
+    } finally {
+      setUser(null)
+    }
+  }
+
+  const updateUserData = async (updates: Partial<Pick<User, "phone" | "address" | "firstName" | "lastName">>) => {
+    if (!user) return
+
+    try {
+      // Try FastAPI first
+      try {
+        const updatedUser = await AuthService.updateUser(user.id, updates)
+        setUser(updatedUser)
+        return updatedUser
+      } catch (apiError) {
+        console.warn("FastAPI update failed, falling back to mock:", apiError)
+
+        // Fallback to mock for development
+        await AuthService.simulateApiCall()
+
+        const updatedUser = { ...user, ...updates }
+        setUser(updatedUser)
+        AuthService.storeUser(updatedUser)
+        return updatedUser
+      }
+    } catch (error) {
+      console.error("Update user data error:", error)
+      throw error
+    }
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isLoading, createWholesaleUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        register,
+        logout,
+        isLoading,
+        createWholesaleUser,
+        updateUserData,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
