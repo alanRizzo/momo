@@ -1,199 +1,195 @@
-"use client"
+"use client";
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import type { User, AuthContextType } from "@/types/auth"
-import { AuthService } from "@/services/auth-service"
+import {
+	createContext,
+	useContext,
+	useState,
+	useEffect,
+	type ReactNode,
+} from "react";
+import type {
+	User,
+	RegisterRequest,
+	LoginRequest,
+} from "@/services/auth-service";
+import { AuthService } from "@/services/auth-service";
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+interface AuthContextType {
+	user: User | null;
+	token: string | null;
+	isLoading: boolean;
+	login: (email: string, password: string) => Promise<boolean>;
+	register: (
+		email: string,
+		password: string,
+		firstName: string,
+		lastName: string,
+		phone: string,
+		address: RegisterRequest["address"],
+	) => Promise<boolean>;
+	createWholesaleUser: (
+		email: string,
+		firstName: string,
+		lastName: string,
+		phone: string,
+		address: RegisterRequest["address"],
+	) => Promise<User>;
+	logout: () => Promise<void>;
+	updateUserData: (updates: Partial<User>) => Promise<User | undefined>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+	const [user, setUser] = useState<User | null>(null);
+	const [token, setToken] = useState<string | null>(null);
+	const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const savedUser = AuthService.getStoredUser()
-    if (savedUser) {
-      setUser(savedUser)
-    }
-    setIsLoading(false)
-  }, [])
+	useEffect(() => {
+		const savedUser = AuthService.getStoredUser();
+		const savedToken = AuthService.getStoredToken();
+		if (savedUser) setUser(savedUser);
+		if (savedToken) setToken(savedToken);
+		setIsLoading(false);
+	}, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    setIsLoading(true)
-    try {
-      // Try FastAPI first
-      try {
-        const user = await AuthService.login(email, password)
-        setUser(user)
-        return true
-      } catch (apiError) {
-        console.warn("FastAPI login failed, falling back to mock:", apiError)
+	const login = async (email: string, password: string): Promise<boolean> => {
+		setIsLoading(true);
+		try {
+			const resp = await AuthService.login({ email, password } as LoginRequest);
+			setUser(resp.user);
+			setToken(resp.access_token ?? null);
+			return true;
+		} catch (error) {
+			console.error("Login error:", error);
+			return false;
+		} finally {
+			setIsLoading(false);
+		}
+	};
 
-        // Fallback to mock for development
-        await AuthService.simulateApiCall()
+	const register = async (
+		email: string,
+		password: string,
+		firstName: string,
+		lastName: string,
+		phone: string,
+		address: RegisterRequest["address"],
+	): Promise<boolean> => {
+		setIsLoading(true);
+		try {
+			const req: RegisterRequest = {
+				email,
+				password,
+				first_name: firstName,
+				last_name: lastName,
+				phone,
+				user_type: "retail",
+				address,
+			};
+			const resp = await AuthService.register(req);
 
-        let mockUser: User
+			// Creamos un objeto User válido para el frontend
+			const newUser: User = {
+				id: "temp-" + Date.now(),
+				email,
+				first_name: firstName,
+				last_name: lastName,
+				phone,
+				user_type: "retail",
+				address: [address],
+			};
 
-        // Check test wholesale user
-        if (email === "mayorista@test.com" && password === "test123") {
-          mockUser = {
-            id: "wholesale-1",
-            email: "mayorista@test.com",
-            name: "Juan Pérez",
-            firstName: "Juan",
-            lastName: "Pérez",
-            phone: "+1234567890",
-            address: "Calle Principal 123, Ciudad",
-            userType: "wholesale",
-          }
-        } else {
-          mockUser = AuthService.createMockUser(email)
-        }
+			setUser(newUser);
+			AuthService.storeUser(newUser);
+			return true;
+		} catch (error) {
+			console.error("Registration error:", error);
+			return false;
+		} finally {
+			setIsLoading(false);
+		}
+	};
 
-        setUser(mockUser)
-        AuthService.storeUser(mockUser)
-        return true
-      }
-    } catch (error) {
-      console.error("Login error:", error)
-      return false
-    } finally {
-      setIsLoading(false)
-    }
-  }
+	const createWholesaleUser = async (
+		email: string,
+		firstName: string,
+		lastName: string,
+		phone: string,
+		address: RegisterRequest["address"],
+	): Promise<User> => {
+		const req: RegisterRequest = {
+			email,
+			password: "defaultPassword123",
+			first_name: firstName,
+			last_name: lastName,
+			phone,
+			user_type: "wholesale",
+			address,
+		};
 
-  const register = async (
-    email: string,
-    password: string,
-    firstName: string,
-    lastName: string,
-    phone: string,
-    address: string,
-  ): Promise<boolean> => {
-    setIsLoading(true)
-    try {
-      // Try FastAPI first
-      try {
-        const user = await AuthService.register(email, password, firstName, lastName, phone, address)
-        setUser(user)
-        return true
-      } catch (apiError) {
-        console.warn("FastAPI register failed, falling back to mock:", apiError)
+		await AuthService.register(req);
 
-        // Fallback to mock for development
-        await AuthService.simulateApiCall()
+		const newUser: User = {
+			id: "wholesale-" + Date.now(),
+			email,
+			first_name: firstName,
+			last_name: lastName,
+			phone,
+			user_type: "wholesale",
+			address: [address],
+		};
 
-        const mockUser = AuthService.createMockUser(email, firstName, lastName, phone, address)
-        setUser(mockUser)
-        AuthService.storeUser(mockUser)
-        return true
-      }
-    } catch (error) {
-      console.error("Registration error:", error)
-      return false
-    } finally {
-      setIsLoading(false)
-    }
-  }
+		setUser(newUser);
+		AuthService.storeUser(newUser);
+		return newUser;
+	};
 
-  const createWholesaleUser = async (
-    email: string,
-    firstName: string,
-    lastName: string,
-    phone: string,
-    address: string,
-  ) => {
-    try {
-      // Try FastAPI first for wholesale user creation
-      try {
-        const user = await AuthService.register(
-          email,
-          "defaultPassword123",
-          firstName,
-          lastName,
-          phone,
-          address,
-          "wholesale",
-        )
-        console.log("Created wholesale user via API:", user)
-        setUser(user)
-        return user
-      } catch (apiError) {
-        console.warn("FastAPI wholesale user creation failed, falling back to mock:", apiError)
+	const logout = async () => {
+		try {
+			await AuthService.logout();
+		} catch (error) {
+			console.error("Logout error:", error);
+		} finally {
+			setUser(null);
+			setToken(null);
+		}
+	};
 
-        // Fallback to mock
-        const wholesaleUser = AuthService.createMockUser(email, firstName, lastName, phone, address)
-        wholesaleUser.userType = "wholesale"
-        wholesaleUser.id = `wholesale-${Date.now()}`
+	const updateUserData = async (updates: Partial<User>) => {
+		if (!user) return;
+		try {
+			const updatedUser = await AuthService.updateUser(user.id, updates);
+			setUser(updatedUser);
+			return updatedUser;
+		} catch (error) {
+			console.error("Update user data error:", error);
+			throw error;
+		}
+	};
 
-        console.log("Created wholesale user (mock):", wholesaleUser)
-        setUser(wholesaleUser)
-        AuthService.storeUser(wholesaleUser)
-        return wholesaleUser
-      }
-    } catch (error) {
-      console.error("Error creating wholesale user:", error)
-      throw error
-    }
-  }
-
-  const logout = async () => {
-    try {
-      await AuthService.logout()
-    } catch (error) {
-      console.error("Logout error:", error)
-    } finally {
-      setUser(null)
-    }
-  }
-
-  const updateUserData = async (updates: Partial<Pick<User, "phone" | "address" | "firstName" | "lastName">>) => {
-    if (!user) return
-
-    try {
-      // Try FastAPI first
-      try {
-        const updatedUser = await AuthService.updateUser(user.id, updates)
-        setUser(updatedUser)
-        return updatedUser
-      } catch (apiError) {
-        console.warn("FastAPI update failed, falling back to mock:", apiError)
-
-        // Fallback to mock for development
-        await AuthService.simulateApiCall()
-
-        const updatedUser = { ...user, ...updates }
-        setUser(updatedUser)
-        AuthService.storeUser(updatedUser)
-        return updatedUser
-      }
-    } catch (error) {
-      console.error("Update user data error:", error)
-      throw error
-    }
-  }
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        login,
-        register,
-        logout,
-        isLoading,
-        createWholesaleUser,
-        updateUserData,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  )
+	return (
+		<AuthContext.Provider
+			value={{
+				user,
+				token,
+				isLoading,
+				login,
+				register,
+				logout,
+				createWholesaleUser,
+				updateUserData,
+			}}
+		>
+			{children}
+		</AuthContext.Provider>
+	);
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
-  }
-  return context
+	const context = useContext(AuthContext);
+	if (context === undefined) {
+		throw new Error("useAuth must be used within an AuthProvider");
+	}
+	return context;
 }
