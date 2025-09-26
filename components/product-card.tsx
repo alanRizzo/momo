@@ -31,7 +31,8 @@ export const ProductCard = memo(function ProductCard({ product, onImageClick, on
     isSelectionValid,
   } = useProductSelection()
 
-  const { formatPrice } = usePriceCalculator(product.price)
+  const basePrice = product.price || 25000 // precio por defecto
+  const { formatPrice } = usePriceCalculator(basePrice)
 
   const handleAddToCart = () => {
     if (!isSelectionValid()) return
@@ -68,8 +69,8 @@ export const ProductCard = memo(function ProductCard({ product, onImageClick, on
             onClick={() => onImageClick(product)}
             loading="lazy"
           />
-          {product.category && (
-            <Badge className="absolute top-4 left-4 bg-accent text-accent-foreground">{product.category}</Badge>
+          {product.badge && (
+            <Badge className="absolute top-4 left-4 bg-accent text-accent-foreground">{product.badge}</Badge>
           )}
         </div>
       </CardHeader>
@@ -78,10 +79,21 @@ export const ProductCard = memo(function ProductCard({ product, onImageClick, on
         <div className="flex items-center gap-2 mb-2">
           <div className="flex items-center">
             {[...Array(5)].map((_, i) => (
-              <Star key={i} className={`h-4 w-4 ${i < 4 ? "text-accent fill-current" : "text-muted-foreground"}`} />
+              <Star
+                key={i}
+                className={`h-4 w-4 ${
+                  product.rating
+                    ? i < Math.floor(product.rating)
+                      ? "text-accent fill-current"
+                      : "text-muted-foreground"
+                    : i < 4
+                      ? "text-accent fill-current"
+                      : "text-muted-foreground"
+                }`}
+              />
             ))}
           </div>
-          <span className="text-sm text-muted-foreground">(4.8)</span>
+          <span className="text-sm text-muted-foreground">({product.rating ? product.rating.toFixed(1) : "4.8"})</span>
         </div>
 
         <CardTitle className="text-xl mb-3 text-balance">{product.name}</CardTitle>
@@ -90,7 +102,7 @@ export const ProductCard = memo(function ProductCard({ product, onImageClick, on
         </p>
 
         <ProductPriceDisplay
-          basePrice={formatPrice(product.price)}
+          basePrice={formatPrice(basePrice)}
           isWholesale={isWholesale}
           selectedSize={selectedPresentation}
           wholesaleQuantities={wholesaleQuantities}
@@ -103,7 +115,7 @@ export const ProductCard = memo(function ProductCard({ product, onImageClick, on
             <WholesaleQuantitySelector
               quantities={wholesaleQuantities}
               onQuantityChange={handleQuantityChange}
-              basePrice={formatPrice(product.price)}
+              basePrice={formatPrice(basePrice)}
             />
           ) : (
             <ProductPresentationSelector

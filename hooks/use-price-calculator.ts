@@ -3,13 +3,15 @@ import { PRESENTATION_OPTIONS } from "@/constants/products"
 import type { WholesaleQuantities } from "@/types/product"
 
 export function usePriceCalculator(basePrice: number) {
+  const normalizedPrice = typeof basePrice === "number" && !isNaN(basePrice) && basePrice > 0 ? basePrice : 12000
+
   const calculatePrice = (sizeMultiplier: number, quantity = 1) => {
-    return basePrice * sizeMultiplier * quantity
+    return normalizedPrice * sizeMultiplier * quantity
   }
 
   const calculateWholesaleTotal = (quantities: WholesaleQuantities) => {
-    const quarterTotal = basePrice * 1 * quantities.quarter
-    const fullTotal = basePrice * 3.5 * quantities.full
+    const quarterTotal = normalizedPrice * 1 * quantities.quarter
+    const fullTotal = normalizedPrice * 3.5 * quantities.full
     return quarterTotal + fullTotal
   }
 
@@ -23,10 +25,11 @@ export function usePriceCalculator(basePrice: number) {
       return calculatePrice(sizeOption?.price || 1)
     }
 
-    return basePrice
+    return normalizedPrice
   }
 
-  const formatPrice = (price: number) => `$${price.toFixed(2)}`
+  const formatPrice = (price: number) =>
+    `$${price.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 
   return {
     calculatePrice,

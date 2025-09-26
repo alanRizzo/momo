@@ -5,8 +5,8 @@ import { ProductCard } from "./product-card"
 import { ProductDetailModal } from "./product-detail-modal"
 import { PurchaseFormModal } from "./purchase-form-modal"
 import { toast } from "@/hooks/use-toast"
+import { useProducts } from "@/hooks/use-products"
 import type { Product, ProductSelection } from "@/types/product"
-import { PRODUCTS } from "@/constants/products"
 
 interface CartItem extends Product {
   options: ProductSelection
@@ -14,6 +14,7 @@ interface CartItem extends Product {
 }
 
 export function ProductShowcase() {
+  const { products, loading, error } = useProducts() // usando hook para obtener productos del backend
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [showPurchaseForm, setShowPurchaseForm] = useState(false)
@@ -171,6 +172,41 @@ export function ProductShowcase() {
     return () => window.removeEventListener("openPurchaseForm", handleOpenPurchaseForm)
   }, [])
 
+  if (loading) {
+    return (
+      <section id="productos" className="py-20 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 text-balance">Nuestros Cafés Selectos</h2>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto text-pretty">Cargando productos...</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="bg-card rounded-lg p-6 animate-pulse">
+                <div className="bg-muted h-48 rounded-lg mb-4"></div>
+                <div className="bg-muted h-4 rounded mb-2"></div>
+                <div className="bg-muted h-4 rounded w-3/4"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  if (error) {
+    return (
+      <section id="productos" className="py-20 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 text-balance">Nuestros Cafés Selectos</h2>
+            <p className="text-xl text-destructive max-w-2xl mx-auto text-pretty">{error}</p>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section id="productos" className="py-20 bg-muted/30">
       <div className="container mx-auto px-4">
@@ -182,14 +218,18 @@ export function ProductShowcase() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          {PRODUCTS.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              onImageClick={handleImageClick}
-              onAddToCart={handleAddToCart}
-            />
-          ))}
+          {products.map(
+            (
+              product, // usando productos del backend
+            ) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                onImageClick={handleImageClick}
+                onAddToCart={handleAddToCart}
+              />
+            ),
+          )}
         </div>
       </div>
 

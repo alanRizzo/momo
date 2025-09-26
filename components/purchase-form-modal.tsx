@@ -11,19 +11,10 @@ import { Package, User, Trash2, Edit, Check, X } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 import { AuthModal } from "@/components/auth-modal"
-import type { ProductSelection } from "@/types/product"
-
-interface Product {
-  id: number
-  name: string
-  image: string
-  price: string
-}
-
-interface CartItem extends Product {
-  options: ProductSelection
-  cartId: number
-}
+import { useModal } from "@/hooks/use-modal"
+import { useEditableField } from "@/hooks/use-editable-field"
+import { calculateCartTotals, type CartItem } from "@/utils/price-calculator"
+import { getGrindLabel, getPresentationLabel } from "@/constants/labels"
 
 interface PurchaseFormModalProps {
   cartItems: CartItem[]
@@ -32,44 +23,7 @@ interface PurchaseFormModalProps {
   onRemoveItem: (cartId: string) => void
 }
 
-const grindLabels = {
-  whole: "Granos Enteros",
-  coarse: "Gruesa",
-  medium: "Media",
-  fine: "Fina",
-  espresso: "Espresso",
-  nespresso: "Nespresso",
-}
-
-const presentationLabels = {
-  quarter: "1/4 kg",
-  half: "1/2 kg",
-  full: "1 kg",
-}
-
-const presentationMultipliers = {
-  quarter: 1,
-  half: 1.8,
-  full: 3.5,
-}
-
-// 🔹 Hook local para cálculos de carrito
 function useCartCalculations(cartItems: CartItem[]) {
-  const calculateItemTotal = (item: CartItem) => {
-    const basePrice =
-      typeof item.price === "string" ? Number.parseFloat(item.price.replace("$", "")) : Number(item.price)
-
-    if (item.options.quarterQuantity !== undefined || item.options.fullQuantity !== undefined) {
-      const quarterTotal = basePrice * 1 * (item.options.quarterQuantity || 0)
-      const fullTotal = basePrice * 3.5 * (item.options.fullQuantity || 0)
-      return quarterTotal + fullTotal
-    }
-
-    const multiplier = presentationMultipliers[item.options.presentation as keyof typeof presentationMultipliers] || 1
-    const quantity = item.options.quantity || 1
-    return basePrice * multiplier * quantity
-  }
-
   const groupedItems = useMemo(() => {
     const grouped = cartItems.reduce(
       (acc, item) => {
@@ -103,7 +57,7 @@ function useCartCalculations(cartItems: CartItem[]) {
           acc[key].presentations.push({
             type: item.options.presentation,
             quantity: item.options.quantity || 1,
-            label: presentationLabels[item.options.presentation as keyof typeof presentationLabels],
+            label: getPresentationLabel(item.options.presentation),
             cartId: item.cartId.toString(),
           })
         }
@@ -127,23 +81,10 @@ function useCartCalculations(cartItems: CartItem[]) {
     return Object.values(grouped)
   }, [cartItems])
 
-  const IVA_RATE = 0.21 // 21% IVA en Argentina
+  const totals = useMemo(() => calculateCartTotals(cartItems), [cartItems])
+  const grandTotal = `$${totals.formattedTotal}`
 
-  const totals = useMemo(() => {
-    const subtotal = cartItems.reduce((sum, item) => sum + calculateItemTotal(item), 0)
-    const ivaAmount = subtotal * IVA_RATE
-    const total = subtotal + ivaAmount
-
-    return {
-      subtotal: subtotal.toFixed(2),
-      ivaAmount: ivaAmount.toFixed(2),
-      total: total.toFixed(2),
-    }
-  }, [cartItems])
-
-  const grandTotal = `$${totals.total}`
-
-  return { groupedItems, grandTotal, calculateItemTotal, totals }
+  return { groupedItems, grandTotal, totals }
 }
 
 export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: PurchaseFormModalProps) {
@@ -154,96 +95,13 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
     phone: "",
     address: "",
   })
-  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const authModal = useModal()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isEditingPhone, setIsEditingPhone] = useState(false)
-  const [isEditingAddress, setIsEditingAddress] = useState(false)
-  const [tempPhone, setTempPhone] = useState("")
-  const [tempAddress, setTempAddress] = useState("")
 
-  const { groupedItems, grandTotal, calculateItemTotal, totals } = useCartCalculations(cartItems)
+  const phoneField = useEditableField(user?.phone || "")
+  const addressField = useEditableField(user?.address || "")
 
-  // Autocompletar con datos del user
-  useEffect(() => {
-    if (user) {
-      setCustomerData((prev) => ({
-        ...prev,
-        name: user.name || "",
-        email: user.email || "",
-        phone: user.phone || "",
-        address: user.address || "",
-      }))
-      setTempPhone(user.phone || "")
-      setTempAddress(user.address || "")
-    }
-  }, [user])
-
-  const handleSavePhone = async () => {
-    if (user && updateUserData) {
-      try {
-        await updateUserData({ phone: tempPhone })
-        setCustomerData((prev) => ({ ...prev, phone: tempPhone }))
-        setIsEditingPhone(false)
-        toast({
-          title: "Teléfono actualizado",
-          description: "Tu número de teléfono ha sido actualizado correctamente.",
-        })
-      } catch (error) {
-        console.error("Error updating phone:", error)
-        toast({
-          title: "Error",
-          description: "No se pudo actualizar el teléfono.",
-          variant: "destructive",
-        })
-      }
-    }
-  }
-
-  const handleSaveAddress = async () => {
-    if (user && updateUserData) {
-      try {
-        await updateUserData({ address: tempAddress })
-        setCustomerData((prev) => ({ ...prev, address: tempAddress }))
-        setIsEditingAddress(false)
-        toast({
-          title: "Dirección actualizada",
-          description: "Tu dirección ha sido actualizada correctamente.",
-        })
-      } catch (error) {
-        console.error("Error updating address:", error)
-        toast({
-          title: "Error",
-          description: "No se pudo actualizar la dirección.",
-          variant: "destructive",
-        })
-      }
-    }
-  }
-
-  const handleCancelEdit = (field: "phone" | "address") => {
-    if (field === "phone") {
-      setTempPhone(customerData.phone)
-      setIsEditingPhone(false)
-    } else {
-      setTempAddress(customerData.address)
-      setIsEditingAddress(false)
-    }
-  }
-
-  const resetForm = () => {
-    setCustomerData({
-      name: user?.name || "",
-      email: user?.email || "",
-      phone: user?.phone || "",
-      address: user?.address || "",
-    })
-    onClose()
-  }
-
-  const isFormValid = () => {
-    if (!user) return false
-    return Boolean(customerData.phone && customerData.address)
-  }
+  const { groupedItems, grandTotal, totals } = useCartCalculations(cartItems)
 
   const handleSubmit = async () => {
     setIsSubmitting(true)
@@ -253,7 +111,7 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
         description: "Te contactaremos pronto para confirmar tu pedido.",
         duration: 5000,
       })
-      resetForm()
+      onClose()
     } catch (error) {
       console.error("Error al enviar pedido:", error)
     } finally {
@@ -261,13 +119,19 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
     }
   }
 
-  const handlePurchaseClick = () => {
-    if (!user) {
-      setAuthModalOpen(true)
-      return
+  useEffect(() => {
+    if (user) {
+      setCustomerData((prev) => ({
+        ...prev,
+        name: user.name || "",
+        email: user.email || "",
+        phone: user.phone || "",
+        address: user.address || "",
+      }))
+      phoneField.setTempValue(user.phone || "")
+      addressField.setTempValue(user.address || "")
     }
-    handleSubmit()
-  }
+  }, [user])
 
   if (cartItems.length === 0) {
     return (
@@ -304,13 +168,8 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
                   />
                   <div className="flex-1">
                     <h4 className="font-semibold text-lg">{group.product.name}</h4>
-                    <p className="text-sm text-muted-foreground">{group.product.price} base</p>
-                    <p className="text-sm text-muted-foreground">
-                      {grindLabels[group.product.options.grind as keyof typeof grindLabels]}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-accent">${calculateItemTotal(group.product).toFixed(2)}</p>
+                    <p className="text-sm text-muted-foreground">${group.product.price} base</p>
+                    <p className="text-sm text-muted-foreground">{getGrindLabel(group.product.options.grind)}</p>
                   </div>
                 </div>
 
@@ -346,16 +205,16 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
             <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
               <div className="flex justify-between text-sm">
                 <span>Subtotal:</span>
-                <span>${totals.subtotal}</span>
+                <span>${totals.formattedSubtotal}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span>IVA (21%):</span>
-                <span>${totals.ivaAmount}</span>
+                <span>${totals.formattedIvaAmount}</span>
               </div>
               <Separator />
               <div className="flex justify-between font-semibold text-lg">
                 <span>Total:</span>
-                <span className="text-accent">${totals.total}</span>
+                <span className="text-accent">${totals.formattedTotal}</span>
               </div>
             </div>
 
@@ -375,20 +234,31 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
                   <div>
                     <Label htmlFor="phone">Teléfono</Label>
                     <div className="flex items-center gap-2">
-                      {isEditingPhone ? (
+                      {phoneField.isEditing ? (
                         <>
                           <Input
                             id="phone"
                             type="tel"
-                            value={tempPhone}
-                            onChange={(e) => setTempPhone(e.target.value)}
+                            value={phoneField.tempValue}
+                            onChange={(e) => phoneField.setTempValue(e.target.value)}
                             placeholder="+54 9 11 1234-5678"
                             className="flex-1"
                           />
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={handleSavePhone}
+                            onClick={() =>
+                              phoneField.confirmEdit(async (newPhone) => {
+                                if (user && updateUserData) {
+                                  await updateUserData({ phone: newPhone })
+                                  setCustomerData((prev) => ({ ...prev, phone: newPhone }))
+                                  toast({
+                                    title: "Teléfono actualizado",
+                                    description: "Tu número de teléfono ha sido actualizado correctamente.",
+                                  })
+                                }
+                              })
+                            }
                             className="text-green-600 hover:text-green-700"
                           >
                             <Check className="h-4 w-4" />
@@ -396,7 +266,7 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => handleCancelEdit("phone")}
+                            onClick={phoneField.cancelEditing}
                             className="text-red-600 hover:text-red-700"
                           >
                             <X className="h-4 w-4" />
@@ -414,7 +284,7 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => setIsEditingPhone(true)}
+                            onClick={phoneField.startEditing}
                             className="text-muted-foreground hover:text-foreground"
                           >
                             <Edit className="h-4 w-4" />
@@ -427,12 +297,12 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
                   <div>
                     <Label htmlFor="address">Dirección de entrega</Label>
                     <div className="flex items-start gap-2">
-                      {isEditingAddress ? (
+                      {addressField.isEditing ? (
                         <>
                           <Textarea
                             id="address"
-                            value={tempAddress}
-                            onChange={(e) => setTempAddress(e.target.value)}
+                            value={addressField.tempValue}
+                            onChange={(e) => addressField.setTempValue(e.target.value)}
                             placeholder="Ej: Av. Siempre Viva 123, Piso 4, Depto B"
                             rows={3}
                             className="flex-1"
@@ -441,7 +311,18 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={handleSaveAddress}
+                              onClick={() =>
+                                addressField.confirmEdit(async (newAddress) => {
+                                  if (user && updateUserData) {
+                                    await updateUserData({ address: newAddress })
+                                    setCustomerData((prev) => ({ ...prev, address: newAddress }))
+                                    toast({
+                                      title: "Dirección actualizada",
+                                      description: "Tu dirección ha sido actualizada correctamente.",
+                                    })
+                                  }
+                                })
+                              }
                               className="text-green-600 hover:text-green-700"
                             >
                               <Check className="h-4 w-4" />
@@ -449,7 +330,7 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleCancelEdit("address")}
+                              onClick={addressField.cancelEditing}
                               className="text-red-600 hover:text-red-700"
                             >
                               <X className="h-4 w-4" />
@@ -468,7 +349,7 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => setIsEditingAddress(true)}
+                            onClick={addressField.startEditing}
                             className="text-muted-foreground hover:text-foreground mt-1"
                           >
                             <Edit className="h-4 w-4" />
@@ -494,7 +375,7 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
             <Button
               className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
               disabled={isSubmitting}
-              onClick={handlePurchaseClick}
+              onClick={() => (user ? handleSubmit() : authModal.open())}
             >
               {isSubmitting
                 ? "Procesando..."
@@ -506,7 +387,7 @@ export function PurchaseFormModal({ cartItems, isOpen, onClose, onRemoveItem }: 
         </DialogContent>
       </Dialog>
 
-      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} initialMode="login" />
+      <AuthModal isOpen={authModal.isOpen} onClose={authModal.close} initialMode="login" />
     </>
   )
 }
