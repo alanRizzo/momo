@@ -35,7 +35,7 @@ export interface User {
 	last_name: string;
 	phone: string;
 	user_type: "retail" | "wholesale";
-	address: [AddressData];
+	addresses: [AddressData];
 }
 
 export interface AuthResponse {

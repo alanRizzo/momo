@@ -2,13 +2,25 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, Coffee, User, LogOut } from "lucide-react";
+import {
+	ShoppingCart,
+	Coffee,
+	User,
+	LogOut,
+	Settings,
+	History,
+} from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { AuthModal } from "@/components/auth-modal";
+import { UserInfoModal } from "./info-user-modal";
+import { OrdersHistoryModal } from "./orders-history-modal";
+import { OrderDetailModal } from "./order-detail-modal";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -82,15 +94,39 @@ export function Header() {
 						{user ? (
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>
-									<Button variant="ghost" size="icon">
-										<User className="h-5 w-5" />
+									<Button
+										variant="ghost"
+										className="flex items-center space-x-2"
+									>
+										<span>Hola, {user.first_name}!</span>
 									</Button>
 								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end">
-									<DropdownMenuItem disabled>{user.name}</DropdownMenuItem>
+								<DropdownMenuContent align="end" className="w-56">
+									<DropdownMenuLabel className="inline-flex items-center gap-2">
+										<User className="h-4 w-4" />
+										{user.first_name} {user.last_name}
+									</DropdownMenuLabel>
+									<DropdownMenuSeparator />
+									<DropdownMenuItem
+										onClick={() =>
+											window.dispatchEvent(new CustomEvent("openUserInfo"))
+										}
+									>
+										<Settings className="mr-2 h-4 w-4" />
+										<span>Editar información</span>
+									</DropdownMenuItem>
+									<DropdownMenuItem
+										onClick={() =>
+											window.dispatchEvent(new CustomEvent("openOrdersHistory"))
+										}
+									>
+										<History className="mr-2 h-4 w-4" />
+										<span>Historial de pedidos</span>
+									</DropdownMenuItem>
+									<DropdownMenuSeparator />
 									<DropdownMenuItem onClick={logout}>
 										<LogOut className="mr-2 h-4 w-4" />
-										Cerrar Sesión
+										<span>Cerrar sesión</span>
 									</DropdownMenuItem>
 								</DropdownMenuContent>
 							</DropdownMenu>
@@ -107,6 +143,9 @@ export function Header() {
 				isOpen={authModalOpen}
 				onClose={() => setAuthModalOpen(false)}
 			/>
+			<UserInfoModal />
+			<OrdersHistoryModal />
+			<OrderDetailModal />
 		</>
 	);
 }

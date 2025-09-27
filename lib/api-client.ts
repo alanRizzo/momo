@@ -61,6 +61,18 @@ export const ApiClient = {
 		});
 	},
 
+	async patch<T>(
+		endpoint: string,
+		data?: any,
+		headers?: Record<string, string>,
+	): Promise<T> {
+		return request<T>(endpoint, {
+			method: "PATCH",
+			body: data ? JSON.stringify(data) : undefined,
+			headers,
+		});
+	},
+
 	async delete<T>(
 		endpoint: string,
 		headers?: Record<string, string>,

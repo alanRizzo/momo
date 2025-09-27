@@ -16,6 +16,7 @@ import { AuthService } from "@/services/auth-service";
 
 interface AuthContextType {
 	user: User | null;
+	setUser: (user: User | null) => void;
 	token: string | null;
 	isLoading: boolean;
 	login: (email: string, password: string) => Promise<boolean>;
@@ -87,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				user_type: "retail",
 				address,
 			};
-			const resp = await AuthService.register(req);
+			await AuthService.register(req);
 
 			// Creamos un objeto User válido para el frontend
 			const newUser: User = {
@@ -172,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		<AuthContext.Provider
 			value={{
 				user,
+				setUser,
 				token,
 				isLoading,
 				login,
